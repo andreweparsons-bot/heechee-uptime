@@ -1,0 +1,35 @@
+name: uptime
+# Andy, 18 Nov 2026: a check every 15 minutes on the Railway services and the two Vercel apps,
+# alerting him when one is down. The addresses live in the UPTIME_URLS repository secret
+# (one per line), never in this file. GitHub emails Andy when a run fails.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check every address
+        env:
+          UPTIME_URLS: ${{ secrets.UPTIME_URLS }}
+        run: |
+          fail=0
+          n=0
+          while IFS= read -r url; do
+            [ -z "$url" ] && continue
+            n=$((n+1))
+            code=000
+            for try in 1 2; do
+              code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "$url" || echo 000)
+              case "$code" in 2*|3*) break;; esac
+              sleep 10
+            done
+            case "$code" in
+              2*|3*) echo "up   $code  service $n";;
+              *)     echo "DOWN $code  service $n"; fail=1;;
+            esac
+          done <<< "$UPTIME_URLS"
+          [ "$n" -gt 0 ] || { echo "UPTIME_URLS is empty"; exit 1; }
+          exit $fail
